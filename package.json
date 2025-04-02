@@ -1,0 +1,42 @@
+{
+  "name": "pump-fun-sniper",
+  "version": "0.1.0",
+  "description": "Sniper bot for Pump.fun on Solana",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/main.js",
+    "dev": "nodemon --watch src --exec ts-node src/main.ts",
+    "lint": "eslint . --ext .ts"
+  },
+  "keywords": [
+    "solana",
+    "pump.fun",
+    "sniper",
+    "bot",
+    "helius",
+    "jito"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "helius-sdk": "^1.2.2",
+    "@solana/web3.js": "^1.91.8",
+    "bs58": "^5.0.0",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "jito-ts": "^4.1.1",
+    "pino": "^9.1.0",
+    "pino-pretty": "^11.0.0"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.12.12",
+    "@typescript-eslint/eslint-plugin": "^7.10.0",
+    "@typescript-eslint/parser": "^7.10.0",
+    "eslint": "^8.57.0",
+    "nodemon": "^3.1.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.4.5"
+  }
+} 
