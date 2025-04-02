@@ -3,55 +3,51 @@ import { BotContext } from '../types';
 import pino from 'pino';
 
 /**
+ * Однократно обновляет последний слот и блокхеш в контексте.
+ * @param context Контекст бота.
+ */
+async function updateSlotAndBlockhash(context: BotContext): Promise<void> {
+  const { solanaConnection, logger } = context;
+  try {
+    const [latestSlot, latestBlockhashResult] = await Promise.all([
+      solanaConnection.getSlot('confirmed'),
+      solanaConnection.getLatestBlockhash('confirmed'),
+    ]);
+
+    if (latestSlot > context.latestSlot) {
+      context.latestSlot = latestSlot;
+    }
+    if (latestBlockhashResult.blockhash !== context.latestBlockhash) {
+      context.latestBlockhash = latestBlockhashResult.blockhash;
+      // logger.debug({...latestBlockhashResult}, 'New blockhash');
+    }
+    logger.trace({ slot: context.latestSlot, blockhash: context.latestBlockhash }, 'Slot/Blockhash Updated');
+
+  } catch (error) {
+    logger.error({ err: error }, 'Ошибка при получении слота/блокхеша');
+  }
+}
+
+/**
  * Запускает периодическое обновление последнего слота и блокхеша.
+ * Сначала выполняет однократное обновление.
  * @param context Контекст бота.
  * @param intervalMs Интервал обновления в миллисекундах.
  */
-export function startSlotAndBlockhashTracker(
+export async function startSlotAndBlockhashTracker(
   context: BotContext,
-  intervalMs: number = 1000 // Обновляем каждую секунду по умолчанию
-): void {
-  const { solanaConnection, logger } = context;
+  intervalMs: number // Интервал теперь обязательный
+): Promise<void> { // Возвращаем Promise для ожидания первого вызова
+  const { logger } = context;
 
-  let isFetching = false; // Флаг, чтобы избежать параллельных запросов
+  logger.info('Запуск трекера слота/блокхеша...');
 
-  const updateInfo = async () => {
-    if (isFetching) {
-      // logger.debug('Предыдущий запрос слота/блокхеша еще выполняется.');
-      return;
-    }
-
-    isFetching = true;
-    try {
-      // Получаем одновременно последний слот и блокхеш
-      const [latestSlot, latestBlockhashResult] = await Promise.all([
-        solanaConnection.getSlot('confirmed'),
-        solanaConnection.getLatestBlockhash('confirmed')
-      ]);
-
-      // Сравниваем и обновляем, если изменилось
-      if (latestSlot > context.latestSlot) {
-          // logger.debug(`Новый слот: ${latestSlot}`);
-          context.latestSlot = latestSlot;
-      }
-      if (latestBlockhashResult.blockhash !== context.latestBlockhash) {
-         // logger.debug(`Новый блокхеш: ${latestBlockhashResult.blockhash} (последний валидный слот: ${latestBlockhashResult.lastValidBlockHeight})`);
-          context.latestBlockhash = latestBlockhashResult.blockhash;
-          // Можно также сохранить lastValidBlockHeight, если нужно для проверки транзакций
-      }
-
-    } catch (error) {
-      logger.error({ err: error }, 'Ошибка при получении слота/блокхеша');
-    } finally {
-      isFetching = false;
-    }
-  };
-
-  // Немедленный вызов для инициализации
-  updateInfo();
+  // Выполняем первый вызов синхронно
+  await updateSlotAndBlockhash(context);
+  logger.info(`Первичный слот: ${context.latestSlot}, Блокхеш: ${context.latestBlockhash}`);
 
   // Установка интервала
-  setInterval(updateInfo, intervalMs);
+  setInterval(() => updateSlotAndBlockhash(context), intervalMs);
 
-  logger.info(`Трекер слота/блокхеша запущен с интервалом ${intervalMs} мс`);
+  logger.info(`Трекер слота/блокхеша успешно запущен с интервалом ${intervalMs} мс`);
 }

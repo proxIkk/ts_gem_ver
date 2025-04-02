@@ -1,36 +1,44 @@
 import { Connection, Keypair, PublicKey } from '@solana/web3.js';
 import { Helius } from 'helius-sdk';
 import { SearcherClient } from 'jito-ts/dist/sdk/block-engine/searcher';
-// import { PumpFunSDK } from 'pumpdotfun-sdk'; // Удален импорт
 import pino from 'pino';
+import { AppConfig } from './config'; // Импортируем AppConfig
 
 /**
- * Представляет открытую позицию по конкретному токену.
+ * Состояние отслеживания/торговли конкретным токеном.
+ */
+export type CoinState = 'monitoring' | 'buying' | 'holding' | 'selling' | 'sold';
+
+/**
+ * Представляет позицию или отслеживаемый токен Pump.fun.
  */
 export interface CoinPosition {
-  mint: PublicKey;          // Адрес минта токена
-  ammId: PublicKey;         // Адрес AMM пула (если применимо, например для Raydium)
-  initialSolInvestment: number; // Сколько SOL было вложено изначально
-  tokenBalance: bigint;     // Текущий баланс токена (в наименьших единицах)
+  mint: PublicKey;
+  bondingCurve: PublicKey;
+  creator: PublicKey;
+  state: CoinState;
+  initialMarketCap?: number; // Начальная капитализация (если удастся получить)
+  tokensHeld?: bigint;      // Количество купленных токенов
+  purchaseTimestamp?: number; // Время покупки
   purchaseTxSignature?: string; // Сигнатура транзакции покупки
-  sellTriggered: boolean;   // Флаг, что продажа инициирована
-  purchaseTimestamp: number; // Время покупки (Unix timestamp)
-  // Можно добавить поля для TP/SL, статуса и т.д.
+  // Дополнительные поля для стратегии продажи, истории цен и т.д.
 }
 
 /**
  * Контекст приложения, содержащий инициализированные клиенты и состояние.
  */
 export interface BotContext {
-  helius: Helius;
+  config: AppConfig; // Используем типизированный конфиг
   solanaConnection: Connection;
-  jitoSearcherClient: SearcherClient;
-  // pumpFunSdk: PumpFunSDK; // Удалено поле
+  heliusClient: Helius;
+  jitoClient: SearcherClient;
+  pumpSdk: any; // Заглушка для будущего SDK/взаимодействия с Pump.fun
   tradingWallet: Keypair; // Ключевая пара торгового кошелька
   jitoAuthWallet: Keypair; // Ключевая пара для аутентификации Jito
-  config: Record<string, any>; // Загруженная конфигурация (можно использовать AppConfig)
   logger: pino.Logger;      // Экземпляр логгера
-  latestSlot: number;       // Последний обработанный слот
+  latestSlot: number;       // Последний полученный слот
   latestBlockhash: string;  // Последний полученный блокхеш
-  // Дополнительные поля состояния по мере необходимости
+  activeCoin: CoinPosition | null; // Текущий отслеживаемый/обрабатываемый токен
+  // Другие глобальные состояния, например, список открытых позиций
+  // openPositions: Map<string, CoinPosition>;
 }

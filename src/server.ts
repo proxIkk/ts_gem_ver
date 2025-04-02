@@ -1,6 +1,7 @@
 import express, { Request, Response, NextFunction } from 'express';
 import { BotContext } from './types'; // Нужен для передачи контекста, если потребуется обработка
 import pino from 'pino';
+import { handleHeliusWebhook } from './webhook'; // Импортируем обработчик
 
 /**
  * Создает и запускает HTTP сервер для приема вебхуков.
@@ -25,33 +26,32 @@ export function startWebhookServer(
   });
 
   // Эндпоинт для приема вебхуков Helius
-  app.post('/webhooks/helius', (req: Request, res: Response) => {
-    const payload = req.body;
-    // TODO: Добавить проверку подписи/заголовка авторизации от Helius, если настроено
-    logger.info({ payload }, 'Получен вебхук Helius');
+  app.post('/webhooks/helius', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const signature = req.headers['helius-signature'] as string;
+      // TODO: Реализовать проверку подписи Helius для безопасности
+      // if (!verifySignature(req.body, signature, HELIUS_AUTH_SECRET)) {
+      //   logger.warn('Неверная подпись Helius вебхука');
+      //   return res.status(401).send('Unauthorized');
+      // }
 
-    // Здесь будет основная логика обработки вебхука.
-    // Например, парсинг payload, определение типа события (создание пула, обмен и т.д.),
-    // и запуск логики покупки, если это новый токен.
+      const payload = req.body;
+      logger.debug({ payload }, 'Получен вебхук Helius');
 
-    // Пример обработки (просто логирование типа транзакции, если есть)
-    if (Array.isArray(payload) && payload.length > 0) {
-        payload.forEach((txInfo, index) => {
-            logger.info(`Вебхук[${index}]: Тип=${txInfo.type}, Сигнатура=${txInfo.signature}`);
-            // Детальный разбор txInfo.events, txInfo.instructions и т.д. для Pump.fun
-        });
-    } else {
-        logger.warn('Получен неожиданный формат payload от Helius вебхука');
+      // Вызываем внешний обработчик, передавая ему контекст и payload
+      await handleHeliusWebhook(payload, context);
+
+      res.status(200).send('OK');
+    } catch (error) {
+      logger.error({ err: error }, 'Ошибка при обработке Helius вебхука');
+      // Передаем ошибку в глобальный обработчик ошибок Express
+      next(error);
     }
-
-
-    // Отвечаем Helius, что вебхук успешно получен
-    res.status(200).send('OK');
   });
 
   // Обработчик ошибок
   app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
-    logger.error({ err }, 'Ошибка при обработке запроса');
+    logger.error({ err, stack: err.stack }, 'Необработанная ошибка сервера');
     res.status(500).send('Internal Server Error');
   });
 

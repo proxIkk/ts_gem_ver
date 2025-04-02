@@ -23,14 +23,14 @@ function getKeypairFromPrivateKey(privateKey: string): Keypair {
 
 /**
  * Инициализирует все необходимые сервисы и клиенты для работы бота.
- * @param config Конфигурация приложения.
+ * @param config Типизированная конфигурация приложения.
  * @param logger Экземпляр логгера.
- * @returns Промис с контекстом бота.
+ * @returns Промис с частичным контекстом бота (без latestSlot, latestBlockhash, activeCoin).
  */
 export async function initializeServices(
   config: AppConfig,
   logger: pino.Logger
-): Promise<Partial<BotContext>> { // Возвращаем Partial, т.к. не все поля инициализируются здесь
+): Promise<Partial<BotContext>> { // Возвращаем Partial<BotContext>
   logger.info('Инициализация сервисов...');
 
   // 1. Загрузка ключевых пар
@@ -51,25 +51,27 @@ export async function initializeServices(
     throw new Error('Не удалось подключиться к Solana RPC.');
   }
 
-  // 3. Создание Helius клиента (для Helius API, не для RPC)
+  // 3. Создание Helius клиента
   logger.info('Инициализация Helius клиента...');
-  const helius = new Helius(config.heliusApiKey);
+  const heliusClient = new Helius(config.heliusApiKey);
   try {
-    const balance = await solanaConnection.getBalance(tradingWallet.publicKey);
-    logger.info(`Helius API ключ, вероятно, валиден (проверено через RPC). Баланс кошелька: ${balance / 1e9} SOL`);
+    // Простая проверка, что ключ не вызывает немедленную ошибку
+    await heliusClient.getAllWebhooks(); // Пример вызова метода API
+    logger.info('Helius клиент инициализирован успешно (проверка API прошла).');
   } catch (error) {
-    logger.error({ err: error }, 'Ошибка при проверке баланса через RPC (может указывать на проблему с RPC или ключом)');
+    logger.error({ err: error }, 'Ошибка инициализации Helius клиента или проверки API ключа');
+    // Настройка вебхука не сработает, но бот может работать частично
   }
 
   // 4. Создание Jito Searcher клиента
   logger.info(`Подключение к Jito Block Engine: ${config.jitoBlockEngineUrl}`);
-  const jitoSearcherClient: SearcherClient = searcherClient(
+  const jitoClient: SearcherClient = searcherClient(
     config.jitoBlockEngineUrl,
     jitoAuthWallet,
     { 'grpc.keepalive_time_ms': 5000 }
   );
 
-  jitoSearcherClient.onBundleResult(
+  jitoClient.onBundleResult(
     (bundleResult: any) => {
       logger.info(`Jito Bundle Result: ${bundleResult?.bundleId} - Accepted: ${bundleResult?.accepted}, Rejected: ${!!bundleResult?.rejected}`);
       if (bundleResult?.rejected) {
@@ -101,24 +103,24 @@ export async function initializeServices(
   }
   */
 
-  logger.info('Jito Searcher клиент инициализирован (подписка на tips временно отключена)');
+  logger.info('Jito Searcher клиент инициализирован');
 
-  // 5. Инициализация PumpFun SDK (пропущено, т.к. SDK не найден)
-  // logger.info('Инициализация PumpFun SDK...');
-  // const pumpFunSdk = new PumpFunSDK(...) - будет реализовано позже
+  // 5. Инициализация PumpFun SDK (Заглушка)
+  const pumpSdk = null; // Или {} или import какой-то библиотеки, если найдена
+  logger.info('PumpFun SDK (Заглушка) инициализирован.');
 
   logger.info('Инициализация сервисов завершена.');
 
   return {
-    helius,
+    config, // Передаем полный конфиг
     solanaConnection,
-    jitoSearcherClient,
-    // pumpFunSdk, // Будет добавлено позже
+    heliusClient,
+    jitoClient,
+    pumpSdk, // Передаем заглушку
     tradingWallet,
     jitoAuthWallet,
-    config,
     logger,
-    // latestSlot и latestBlockhash будут инициализированы в main.ts
+    // latestSlot, latestBlockhash, activeCoin инициализируются в main
   };
 }
 
@@ -128,13 +130,13 @@ export { getKeypairFromPrivateKey };
 // Экспортируем здесь же функцию для настройки вебхука
 /**
  * Создает или обновляет вебхук Helius для отслеживания транзакций Pump.fun.
- * @param helius Helius клиент.
+ * @param heliusClient Helius клиент.
  * @param webhookUrl URL для получения вебхуков.
  * @param pumpFunProgramId Адрес программы Pump.fun.
  * @param logger Экземпляр логгера.
  */
 export async function setupHeliusWebhook(
-  helius: Helius,
+  heliusClient: Helius,
   webhookUrl: string,
   pumpFunProgramId: string,
   logger: pino.Logger
@@ -143,34 +145,29 @@ export async function setupHeliusWebhook(
 
   const webhookOptions: CreateWebhookRequest = {
     webhookURL: webhookUrl,
-    // Используем ENHANCED вместо ACCOUNT_WEBHOOK, чтобы угодить линтеру в v1
-    // Это также даст нам расширенные (парсеные) данные транзакций
     webhookType: WebhookType.ENHANCED,
     accountAddresses: [pumpFunProgramId],
     transactionTypes: [TransactionType.ANY],
   };
 
   try {
-    const existingWebhooks = await helius.getAllWebhooks();
+    const existingWebhooks = await heliusClient.getAllWebhooks();
     const existingWebhook = existingWebhooks.find(wh =>
       wh.webhookURL === webhookUrl &&
       wh.accountAddresses.includes(pumpFunProgramId) &&
-      // Проверяем на ENHANCED
       wh.webhookType === WebhookType.ENHANCED
     );
 
     if (existingWebhook) {
       logger.info(`Найден существующий вебхук типа ENHANCED с ID: ${existingWebhook.webhookID}. Обновление...`);
-      const updatedWebhook = await helius.editWebhook(existingWebhook.webhookID, webhookOptions);
+      const updatedWebhook = await heliusClient.editWebhook(existingWebhook.webhookID, webhookOptions);
       logger.info(`Вебхук успешно обновлен с ID: ${updatedWebhook.webhookID}`);
     } else {
       logger.info('Создание нового ENHANCED вебхука...');
-      const newWebhook = await helius.createWebhook(webhookOptions);
+      const newWebhook = await heliusClient.createWebhook(webhookOptions);
       logger.info(`Вебхук успешно создан с ID: ${newWebhook.webhookID}`);
     }
   } catch (error) {
     logger.error({ err: error, webhookOptions }, 'Ошибка при создании/обновлении Helius вебхука');
-    // Можно пробросить ошибку, если настройка вебхука критична
-    // throw new Error('Не удалось настроить Helius вебхук.');
   }
 }
