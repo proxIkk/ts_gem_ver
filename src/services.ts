@@ -10,6 +10,10 @@ import bs58 from 'bs58';
 import { AppConfig } from './config';
 import { BotContext } from './types';
 import pino from 'pino';
+// Импорты для PumpFunSDK
+import { AnchorProvider, Program } from '@coral-xyz/anchor';
+import NodeWallet from '@coral-xyz/anchor/dist/cjs/nodewallet'; // Используем NodeWallet для AnchorProvider
+import { PumpFunSDK } from 'pumpdotfun-sdk';
 
 // Вспомогательная функция для получения Keypair из приватного ключа Base58
 function getKeypairFromPrivateKey(privateKey: string): Keypair {
@@ -105,9 +109,28 @@ export async function initializeServices(
 
   logger.info('Jito Searcher клиент инициализирован');
 
-  // 5. Инициализация PumpFun SDK (Заглушка)
-  const pumpSdk = null; // Или {} или import какой-то библиотеки, если найдена
-  logger.info('PumpFun SDK (Заглушка) инициализирован.');
+  // 5. Инициализация PumpFun SDK
+  logger.info('Инициализация PumpFun SDK...');
+  // Создаем Anchor Provider, необходимый для SDK
+  const provider = new AnchorProvider(
+      solanaConnection,
+      new NodeWallet(tradingWallet), // Используем наш торговый кошелек
+      { commitment: 'confirmed' } // Можно настроить commitment
+  );
+  // Инициализируем SDK
+  const pumpSdk = new PumpFunSDK(provider);
+  // Проверка (опционально, можно вызвать метод типа getGlobalAccount)
+  try {
+    const globalAcc = await pumpSdk.getGlobalAccount();
+    if (!globalAcc) {
+        throw new Error('Не удалось получить GlobalAccount от Pump.fun');
+    }
+    logger.info('PumpFun SDK инициализирован успешно.');
+  } catch (error) {
+      logger.error({ err: error }, 'Ошибка при инициализации PumpFun SDK или получении GlobalAccount.');
+      // Можно решить, критична ли эта ошибка для запуска
+      // throw new Error('Не удалось инициализировать PumpFun SDK.');
+  }
 
   logger.info('Инициализация сервисов завершена.');
 
@@ -116,7 +139,7 @@ export async function initializeServices(
     solanaConnection,
     heliusClient,
     jitoClient,
-    pumpSdk, // Передаем заглушку
+    pumpSdk, // Передаем инициализированный SDK
     tradingWallet,
     jitoAuthWallet,
     logger,

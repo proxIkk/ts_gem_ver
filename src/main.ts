@@ -32,27 +32,29 @@ async function main() {
     // Инициализация сервисов
     const partialContext = await initializeServices(config, logger);
 
-    // Создание полного контекста
+    // Проверка наличия критически важных компонентов перед созданием полного контекста
+    if (!partialContext.config || !partialContext.solanaConnection || !partialContext.heliusClient || !partialContext.jitoClient || !partialContext.tradingWallet || !partialContext.jitoAuthWallet || !partialContext.logger) {
+      throw new Error('Критическая ошибка: Не удалось инициализировать базовые компоненты контекста.');
+    }
+    // Отдельная проверка для pumpSdk, так как его инициализация может упасть без падения всего initializeServices
+    if (!partialContext.pumpSdk) {
+        throw new Error('Критическая ошибка: Не удалось инициализировать PumpFun SDK.');
+    }
+
+    // Создание полного контекста (теперь мы уверены, что все поля есть)
     const context: BotContext = {
-      // Проверяем наличие обязательных полей из partialContext
-      config: partialContext.config!,
-      solanaConnection: partialContext.solanaConnection!,
-      heliusClient: partialContext.heliusClient!,
-      jitoClient: partialContext.jitoClient!,
-      pumpSdk: partialContext.pumpSdk, // Может быть null/any
-      tradingWallet: partialContext.tradingWallet!,
-      jitoAuthWallet: partialContext.jitoAuthWallet!,
-      logger: partialContext.logger!,
-      // Добавляем поля состояния
+      config: partialContext.config,
+      solanaConnection: partialContext.solanaConnection,
+      heliusClient: partialContext.heliusClient,
+      jitoClient: partialContext.jitoClient,
+      pumpSdk: partialContext.pumpSdk, // Теперь TS знает, что он не undefined
+      tradingWallet: partialContext.tradingWallet,
+      jitoAuthWallet: partialContext.jitoAuthWallet,
+      logger: partialContext.logger,
       latestSlot: 0,
       latestBlockhash: '',
       activeCoin: null,
     };
-
-    // Проверка на случай, если initializeServices вернул не все ожидаемые поля
-    if (!context.config || !context.solanaConnection || !context.heliusClient || !context.jitoClient || !context.tradingWallet || !context.jitoAuthWallet || !context.logger) {
-        throw new Error('Критическая ошибка: Не удалось инициализировать все компоненты контекста.');
-    }
 
     // Настройка Helius вебхука (выполняется до запуска сервера)
     await setupHeliusWebhook(

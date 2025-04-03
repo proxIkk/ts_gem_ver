@@ -3,6 +3,7 @@ import { Helius } from 'helius-sdk';
 import { SearcherClient } from 'jito-ts/dist/sdk/block-engine/searcher';
 import pino from 'pino';
 import { AppConfig } from './config'; // Импортируем AppConfig
+import { PumpFunSDK } from 'pumpdotfun-sdk'; // Импортируем SDK
 
 /**
  * Состояние отслеживания/торговли конкретным токеном.
@@ -32,7 +33,7 @@ export interface BotContext {
   solanaConnection: Connection;
   heliusClient: Helius;
   jitoClient: SearcherClient;
-  pumpSdk: any; // Заглушка для будущего SDK/взаимодействия с Pump.fun
+  pumpSdk: PumpFunSDK; // Используем импортированный тип
   tradingWallet: Keypair; // Ключевая пара торгового кошелька
   jitoAuthWallet: Keypair; // Ключевая пара для аутентификации Jito
   logger: pino.Logger;      // Экземпляр логгера
